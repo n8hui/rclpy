@@ -54,7 +54,6 @@ namespace
 constexpr size_t WARN_TIMERS_COUNT = 8;
 
 typedef std::function<void(const rcl_time_jump_t *)> ClockJumpCallbackT;
-typedef std::function<void()> TimerResetCallbackT;
 
 extern "C" void RclClockJumpTrampoline(
   const rcl_time_jump_t * time_jump, bool before_jump, void * user_data)
@@ -66,12 +65,6 @@ extern "C" void RclClockJumpTrampoline(
   }
   auto cb = reinterpret_cast<ClockJumpCallbackT *>(user_data);
   (*cb)(time_jump);
-}
-
-extern "C" void RclTimerResetTrampoline(const void * user_data, size_t)
-{
-  auto cb = reinterpret_cast<const TimerResetCallbackT *>(user_data);
-  (*cb)();
 }
 
 }  // namespace
@@ -113,10 +106,6 @@ public:
         std::string("Failed to set RCL clock jump callback: ") + rcl_get_error_string().str);
     }
 
-    // This isn't necessary yet but every timer will eventually depend on it.  Again, this could
-    // happen on any thread.
-    reset_cb_ = [this]() {events_queue_->Enqueue(CallIfAlive(&ClockManager::UpdateTimers));};
-
     // Initialize which timebase we're on
     if (clock_->type == RCL_ROS_TIME) {
       if (RCL_RET_OK != rcl_is_enabled_ros_time_override(clock_, &on_debug_time_)) {
@@ -141,15 +130,8 @@ public:
   bool empty() const {return timers_.empty();}
 
   void AddTimer(
-    rcl_timer_t * timer, std::function<void(const rcl_timer_call_info_t &)> ready_callback)
+    rcl_timer_t * timer, std::function<void()> ready_callback)
   {
-    // All timers have the same reset callback
-    if (
-      RCL_RET_OK != rcl_timer_set_on_reset_callback(timer, RclTimerResetTrampoline, &reset_cb_))
-    {
-      throw std::runtime_error(
-        std::string("Failed to set timer reset callback: ") + rcl_get_error_string().str);
-    }
     timers_[timer] = ready_callback;
     if (timers_.size() >= WARN_TIMERS_COUNT) {
       py::print("Warning, the number of timers associated with this clock is large.");
@@ -165,10 +147,6 @@ public:
       throw py::key_error("Attempt to remove unmanaged timer");
     }
 
-    if (RCL_RET_OK != rcl_timer_set_on_reset_callback(timer, nullptr, nullptr)) {
-      throw std::runtime_error(
-        std::string("Failed to clear timer reset callback: ") + rcl_get_error_string().str);
-    }
     timers_.erase(it);
     // We could re-evaluate how long we need to block for now that a timer has been removed; but,
     // there's no real harm in one extra wakeup that then decides it doesn't need to do anything,
@@ -252,16 +230,15 @@ private:
 
     // This notifies RCL that we're considering the timer triggered, for the purposes of updating
     // the next trigger time.
-    rcl_timer_call_info_t info;
-    const auto ret = rcl_timer_call_with_info(rcl_timer, &info);
+    const auto ret = rcl_timer_call(rcl_timer);
     switch (ret) {
       case RCL_RET_OK:
         // Dispatch the actual user callback.
-        map_it->second(info);
+        map_it->second();
         break;
       case RCL_RET_TIMER_CANCELED:
-        // Someone canceled the timer after we queried the call time.  Nevermind, then...
-        rcl_reset_error();
+      // Someone canceled the timer after we queried the call time.  Nevermind, then...
+      rcl_reset_error();
         break;
       default:
         throw std::runtime_error(
@@ -289,10 +266,9 @@ private:
   EventsQueue * const events_queue_;
   rcl_clock_t * const clock_;
   ClockJumpCallbackT jump_cb_;
-  TimerResetCallbackT reset_cb_;
   bool on_debug_time_{};
 
-  std::unordered_map<rcl_timer_t *, std::function<void(const rcl_timer_call_info_t &)>> timers_;
+  std::unordered_map<rcl_timer_t *, std::function<void()>> timers_;
   std::unordered_set<rcl_timer_t *> ready_timers_;
   DelayedEventThread next_update_wait_{events_queue_};
 };
@@ -316,7 +292,7 @@ rcl_clock_t * GetTimerClock(rcl_timer_t * timer)
 }  // namespace
 
 void RclTimersManager::AddTimer(
-  rcl_timer_t * timer, std::function<void(const rcl_timer_call_info_t &)> ready_callback)
+  rcl_timer_t * timer, std::function<void()> ready_callback)
 {
   // Figure out the clock this timer is using, make sure a manager exists for that clock, then
   // forward the timer to that clock's manager.
@@ -344,7 +320,7 @@ void RclTimersManager::RemoveTimer(rcl_timer_t * timer)
 
 TimersManager::TimersManager(
   EventsQueue * events_queue,
-  std::function<void(py::handle, const rcl_timer_call_info_t &)> timer_ready_callback)
+  std::function<void(py::handle)> timer_ready_callback)
 : rcl_manager_(events_queue), ready_callback_(timer_ready_callback)
 {
 }
@@ -357,7 +333,7 @@ void TimersManager::AddTimer(py::handle timer)
   py::handle handle = timer.attr("handle");
   mapping.with = std::make_unique<ScopedWith>(handle);
   mapping.rcl_ptr = py::cast<const Timer &>(handle).rcl_ptr();
-  rcl_manager_.AddTimer(mapping.rcl_ptr, std::bind(ready_callback_, timer, pl::_1));
+  rcl_manager_.AddTimer(mapping.rcl_ptr, std::bind(ready_callback_, timer));
   timer_mappings_[timer] = std::move(mapping);
 }
 

@@ -108,7 +108,7 @@ private:
 
   void HandleAddedTimer(pybind11::handle);
   void HandleRemovedTimer(pybind11::handle);
-  void HandleTimerReady(pybind11::handle, const rcl_timer_call_info_t &);
+  void HandleTimerReady(pybind11::handle);
 
   void HandleAddedClient(pybind11::handle);
   void HandleRemovedClient(pybind11::handle);
