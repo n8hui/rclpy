@@ -53,7 +53,7 @@ namespace
 // assumption, so we can reassess this decision.
 constexpr size_t WARN_TIMERS_COUNT = 8;
 
-typedef std::function<void(const rcl_time_jump_t *)> ClockJumpCallbackT;
+typedef std::function<void (const rcl_time_jump_t *)> ClockJumpCallbackT;
 
 extern "C" void RclClockJumpTrampoline(
   const rcl_time_jump_t * time_jump, bool before_jump, void * user_data)
@@ -103,14 +103,15 @@ public:
       rcl_clock_add_jump_callback(clock_, threshold, RclClockJumpTrampoline, &jump_cb_))
     {
       throw std::runtime_error(
-        std::string("Failed to set RCL clock jump callback: ") + rcl_get_error_string().str);
+              std::string("Failed to set RCL clock jump callback: ") + rcl_get_error_string().str);
     }
 
     // Initialize which timebase we're on
     if (clock_->type == RCL_ROS_TIME) {
       if (RCL_RET_OK != rcl_is_enabled_ros_time_override(clock_, &on_debug_time_)) {
         throw std::runtime_error(
-          std::string("Failed to get RCL clock override state: ") + rcl_get_error_string().str);
+                std::string("Failed to get RCL clock override state: ") +
+                rcl_get_error_string().str);
       }
     }
   }
@@ -157,7 +158,7 @@ private:
   /// Returns a function suitable for being invoked later, which would invoke the given method on
   /// `this` with the given args, provided that `this` still exists at that time.
   template<typename ... Args>
-  std::function<void()> CallIfAlive(void (ClockManager::*method)(Args...), Args... args)
+  std::function<void()> CallIfAlive(void (ClockManager::* method)(Args...), Args... args)
   {
     std::weak_ptr<ClockManager> weak_this(shared_from_this());
     return [ = ]() {
@@ -181,7 +182,7 @@ private:
     int64_t rcl_now{};
     if (RCL_RET_OK != rcl_clock_get_now(clock_, &rcl_now)) {
       throw std::runtime_error(
-        std::string("Failed to read RCL clock: ") + rcl_get_error_string().str);
+              std::string("Failed to read RCL clock: ") + rcl_get_error_string().str);
     }
     const auto chrono_now = std::chrono::steady_clock::now();
 
@@ -237,12 +238,12 @@ private:
         map_it->second();
         break;
       case RCL_RET_TIMER_CANCELED:
-      // Someone canceled the timer after we queried the call time.  Nevermind, then...
-      rcl_reset_error();
+        // Someone canceled the timer after we queried the call time.  Nevermind, then...
+        rcl_reset_error();
         break;
       default:
         throw std::runtime_error(
-          std::string("Failed to call RCL timer: ") + rcl_get_error_string().str);
+                std::string("Failed to call RCL timer: ") + rcl_get_error_string().str);
     }
   }
 
@@ -259,7 +260,7 @@ private:
         return {};
       default:
         throw std::runtime_error(
-          std::string("Failed to fetch timer ready time: ") + rcl_get_error_string().str);
+                std::string("Failed to fetch timer ready time: ") + rcl_get_error_string().str);
     }
   }
 
@@ -285,7 +286,7 @@ rcl_clock_t * GetTimerClock(rcl_timer_t * timer)
   rcl_clock_t * clock{};
   if (RCL_RET_OK != rcl_timer_clock(timer, &clock)) {
     throw std::runtime_error(
-      std::string("Failed to determine clock for timer: ") + rcl_get_error_string().str);
+            std::string("Failed to determine clock for timer: ") + rcl_get_error_string().str);
   }
   return clock;
 }
