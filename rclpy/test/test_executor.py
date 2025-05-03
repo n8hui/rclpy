@@ -534,6 +534,9 @@ class TestExecutor(unittest.TestCase):
 
                 future = Future(executor=executor)
 
+                # Make sure the future wakes this executor when it is done
+                future.add_done_callback(lambda x: executor.wake())
+
                 # Setup a thread to spin_once_until_future_complete, which will spin
                 # for a maximum of 10 seconds.
                 start = time.time()
@@ -561,6 +564,9 @@ class TestExecutor(unittest.TestCase):
         executor = MultiThreadedExecutor(context=self.context)
 
         future = Future(executor=executor)
+
+        # Make sure the future wakes this executor when it is done
+        future.add_done_callback(lambda x: executor.wake())
 
         # Setup a thread to spin_once_until_future_complete, which will spin
         # for a maximum of 10 seconds.
@@ -614,7 +620,7 @@ class TestExecutor(unittest.TestCase):
 
                 assert count == 2
 
-                executor.shutdown()
+                executor.shutdown(1)
                 self.node.destroy_timer(timer2)
                 self.node.destroy_timer(timer1)
                 self.node.destroy_client(cli)
